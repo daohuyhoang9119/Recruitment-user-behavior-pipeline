@@ -20,10 +20,11 @@ spark = SparkSession.builder \
     .config('spark.jars.packages', 'com.datastax.spark:spark-cassandra-connector_2.12:3.1.0') \
     .config("spark.driver.memory", "10g") \
     .getOrCreate()
+load_dotenv()
 input_path = os.getenv("INPUT_PATH")
 output_path = os.getenv("OUTPUT_PATH")
 
-
+#----------Handle with database-----------------
 def read_data_cassandra():
     # Adjust keyspace and table names as per your Cassandra setup
     keyspace_name = "hhdatabase"
@@ -35,14 +36,14 @@ def read_data_cassandra():
         .load()
     return df
 
-def read_data_mysql():
+def read_company_from_mysql():
     # Retrieve environment variables
     load_dotenv()
     port_number = os.getenv("MYSQL_PORTNUMBER")
     db_name = os.getenv("MYSQL_DBNAME")
     username = os.getenv("MYSQL_USERNAME")
     password = os.getenv("MYSQL_PASSWORD")
-    read_table = 'company'
+    sql = """(SELECT id as job_id, company_id, group_id, campaign_id FROM job) test"""
     # Ensure all necessary environment variables are set
     if not all([db_name, username, password]):
         raise ValueError("Missing one or more required environment variables: MYSQL_DBNAME, MYSQL_USERNAME, MYSQL_PASSWORD")
@@ -54,15 +55,25 @@ def read_data_mysql():
     df = spark.read.format('jdbc').options(
         url=jdbc_url,
         driver="com.mysql.cj.jdbc.Driver",
-        dbtable=read_table,
+        dbtable=sql,
         user=username,
         password=password
     ).load()
-
     return df
 
 
 
+
+#----------Analyze data-----------------
+def analyze_data(df):
+    print("------Print schema--------")
+    df.printSchema()
+    print("------Custom track values--------")
+    custom_track_counts = df.groupBy('custom_track').count()
+    return custom_track_counts.show()
+
+
+#----------TRANSFORM DATA-----------------
 
 def transform_data(df):
     df = df.select('create_time','ts','job_id','custom_track','bid','campaign_id','group_id','publisher_id')
@@ -102,8 +113,8 @@ def calculating_clicks(df):
     clicks_data = clicks_data.na.fill({'publisher_id':0})
     clicks_data = clicks_data.na.fill({'group_id':0})
     clicks_data = clicks_data.na.fill({'campaign_id':0})
-    clicks_data.registerTempTable('tracking')
-    clicks_output = spark.sql("""SELECT job_id , date(ts) as date , hour(ts) as hour , publisher_id , campaign_id , group_id , avg(bid) as bid_set, count(*) as clicks , sum(bid) as spend_hour from tracking
+    clicks_data.registerTempTable('clicks')
+    clicks_output = spark.sql("""SELECT job_id , date(ts) as date , hour(ts) as hour , publisher_id , campaign_id , group_id , avg(bid) as bid_set, count(*) as clicks,  sum(bid) as spend_hour   from clicks
     group by job_id , date(ts) , hour(ts) , publisher_id , campaign_id , group_id """)
     return clicks_output 
 
@@ -114,8 +125,8 @@ def calculating_unqualified(df):
     unqualified_data = unqualified_data.na.fill({'publisher_id':0})
     unqualified_data = unqualified_data.na.fill({'group_id':0})
     unqualified_data = unqualified_data.na.fill({'campaign_id':0})
-    unqualified_data.registerTempTable('tracking')
-    unqualified_output = spark.sql("""SELECT job_id , date(ts) as date , hour(ts) as hour , publisher_id , campaign_id , group_id , avg(bid) as bid_set, count(*) as unqualified , sum(bid) as spend_hour from tracking
+    unqualified_data.registerTempTable('unqualified')
+    unqualified_output = spark.sql("""SELECT job_id , date(ts) as date , hour(ts) as hour , publisher_id , campaign_id , group_id , count(*) as unqualified from unqualified 
     group by job_id , date(ts) , hour(ts) , publisher_id , campaign_id , group_id """)
     return unqualified_output 
 
@@ -126,9 +137,10 @@ def calculating_qualified(df):
     qualified_data = qualified_data.na.fill({'publisher_id':0})
     qualified_data = qualified_data.na.fill({'group_id':0})
     qualified_data = qualified_data.na.fill({'campaign_id':0})
-    qualified_data.registerTempTable('tracking')
-    qualified_output = spark.sql("""SELECT job_id , date(ts) as date , hour(ts) as hour , publisher_id , campaign_id , group_id , avg(bid) as bid_set, count(*) as qualified , sum(bid) as spend_hour from tracking
-    group by job_id , date(ts) , hour(ts) , publisher_id , campaign_id , group_id """)
+    qualified_data.registerTempTable('qualified')
+    qualified_output = spark.sql("""SELECT job_id , date(ts) as date , hour(ts) as hour , publisher_id , campaign_id , group_id, count(*) as qualified  
+                                from qualified
+                                group by job_id , date(ts) , hour(ts) , publisher_id , campaign_id , group_id """)
     return qualified_output 
 
 def process_final_data(clicks_output,conversion_output,qualified_output,unqualified_output):
@@ -146,48 +158,67 @@ def process_cassandra_data(df):
     return final_data
 
 
+
+
+
+
 def write_data_mysql(df):
     port_number = os.getenv("MYSQL_PORTNUMBER")
     db_name = os.getenv("MYSQL_DBNAME")
     username = os.getenv("MYSQL_USERNAME")
     password = os.getenv("MYSQL_PASSWORD")
+    table_name = 'events'
+    # Ensure all necessary environment variables are set
+    if not all([db_name, username, password]):
+        raise ValueError("Missing one or more required environment variables: MYSQL_DBNAME, MYSQL_USERNAME, MYSQL_PASSWORD")
+    jdbc_url = f"jdbc:mysql://localhost:{port_number}/{db_name}"
     
-    return df
+    # final_output = df.select('job_id','date','hour','publisher_id','company_id','campaign_id','group_id','unqualified','qualified','conversions','clicks','bid_set','spend_hour')
+    df = df.withColumnRenamed('date','dates')\
+                                .withColumnRenamed('hour','hours')\
+                                .withColumnRenamed('qualified','qualified_application').\
+                                withColumnRenamed('unqualified','disqualified_application')\
+                                .withColumnRenamed('conversions','conversion')
+    df = df.withColumn('sources',lit('Cassandra'))
+   
+    df.write.format('jdbc').options(
+        url=jdbc_url,
+        driver="com.mysql.cj.jdbc.Driver",
+        dbtable=table_name,
+        user=username,
+        password=password
+    ).mode('append').save()
+    return print('Data imported successfully')
 
-
-def analyze_data(df):
-    print("------Print schema--------")
-    df.printSchema()
-    print("------Custom track values--------")
-    custom_track_counts = df.groupBy('custom_track').count()
-    return custom_track_counts.show()
-    # custom_track_counts_list = custom_track_counts.collect()
-    # # Print the results
-    # for row in custom_track_counts_list:
-    #     print(f"Custom Track: {row['custom_track']}, Count: {row['count']}")
-    
 
 
 
 def main():
-    # df = read_data_cassandra()
-    # print("------Read data & show--------")
-    # df.show(5,truncate=False)
-    # # print("------Analyze data--------")
-    # # analyze_data(df)
-    # print("------Transform dataframe--------")
-    # df = transform_data(df)
-    # df.show(5,truncate=False)
-    # print("------Processing and calculating form Cassandra--------")
-    # df = process_cassandra_data(df)
-    # df.show(5,truncate=False)
-
-
-
-    df = read_data_mysql()
+    df = read_data_cassandra()
+    print("------Read data & show--------")
     df.show(5,truncate=False)
 
+    print("------Transform data--------")
+    df = transform_data(df)
+    df.show(5,truncate=False)
 
+    print("------Processing and calculating form Cassandra--------")
+    df = process_cassandra_data(df)
+    df.show(5,truncate=False)
+
+    print("------Processing company table from MySQL--------")
+    company_df = read_company_from_mysql()
+    company_df.show(5,truncate=False)
+
+
+    print("------Join together--------")
+    final_output = df.join(company_df,'job_id','left').drop(company_df.group_id).drop(company_df.campaign_id)
+    final_output.show(5,truncate=False)
+    
+    print("------Import result to MySQL--------")
+    write_data_mysql(final_output)
+    
+    print("------Done Job--------")
     spark.stop()
 
 
