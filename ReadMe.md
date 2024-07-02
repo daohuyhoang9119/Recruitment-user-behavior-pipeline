@@ -1,3 +1,113 @@
+# Recruitment User Behavior Pipeline
+
+## Overview
+
+This project builds a real-time/near-real-time ETL pipeline that extracts data from Cassandra (DL), transforms it using PySpark, and loads it into MySQL (DW). The core functionality involves connecting to Cassandra to read data, processing it into the desired format, and importing the processed data into MySQL.
+
+## Project Structure
+
+The project is organized into the following main components:
+
+```bash
+   recruitment-user-behavior-pipeline/
+
+    ├── job/
+    │   ├── main.py
+    |── requirements.txt
+    ├── .env.example
+    ├── .gitignore
+    ├── data-dictionary.xlsx
+    ├── README.md
+```
+
+- **main.py**: Contains the main script to orchestrate the data pipeline.
+- **job/**: Directory containing scripts and modules related to data processing.
+- **data/**: Directory where input Parquet files are stored.
+- **output/**: Directory where output files (such as CSV files) are stored.
+
+## Data Schemma
+
+Cassandra
+
+```bash
+|-- eventID: string (nullable = true)
+|-- datetime: string (nullable = true)
+|-- user_id: string (nullable = true)
+|-- keyword: string (nullable = true)
+|-- category: string (nullable = true)
+|-- proxy_isp: string (nullable = true)
+|-- platform: string (nullable = true)
+|-- networkType: string (nullable = true)
+|-- action: string (nullable = true)
+|-- userPlansMap: array (nullable = true)
+|    |-- element: string (containsNull = true)
+```
+
+MySQL
+
+```bash
+|-- eventID: string (nullable = true)
+|-- datetime: string (nullable = true)
+|-- user_id: string (nullable = true)
+|-- keyword: string (nullable = true)
+|-- category: string (nullable = true)
+|-- proxy_isp: string (nullable = true)
+|-- platform: string (nullable = true)
+|-- networkType: string (nullable = true)
+|-- action: string (nullable = true)
+|-- userPlansMap: array (nullable = true)
+|    |-- element: string (containsNull = true)
+```
+
+Output
+
+```bash
+|-- user_id: string (nullable = true)
+|-- most_search_t6: string (nullable = true)
+|-- most_search_t7: string (nullable = true)
+
+```
+
+## Data Processing Pipeline
+
+- Read Data from Cassandra:
+  Read data from the tracking table.
+- Read Company Data from MySQL:
+  Read and transform the job table from MySQL.
+- Transform Data:
+  Selects relevant columns and fills missing values.
+- Calculate Metrics:
+  Calculates clicks, conversions, qualified, and unqualified events.
+- Join Data:
+  Joins the transformed Cassandra data with MySQL data on job_id.
+- Write Data to MySQL:
+  Writes the final joined and transformed data back to MySQL.
+
+## Requirements
+
+To run this project, ensure you have the following dependencies installed:
+
+- Python (>= 3.x)
+- Apache Spark
+- PySpark
+- pandas
+- findspark
+- dotenv
+- Docker
+- Cassandra
+- MySQL
+- DataGrip
+
+## Models
+
+- Linear regression
+
+## Tech Stack
+
+**Client:** React, Redux, TailwindCSS
+
+**Server:** Node, Express
+
 Requirements : Build a realtime / near realtime ETL pipeline from DL to DW using PySpark
 DL : Cassandra
 DW : MySQL
@@ -33,80 +143,6 @@ C:\Users\DELL\DataGripProjects\
 
 
 use hhdatabase;
-CREATE TABLE search (
-        column1 int PRIMARY KEY,
-        job_id int,
-        benefits text,
-        bid int,
-        campaign_budget text,
-        campaign_id int,
-        city_name text,
-        company_logo text,
-        company_name text,
-        description text,
-        feed_id text,
-        lat float,
-        lon float,
-        major_category text,
-        minor_category text
-);
-
-CREATE TABLE search (
-    column1 int PRIMARY KEY
-    job_id int PRIMARY KEY,
-    title TEXT,
-    description TEXT,
-    company_name TEXT,
-    city_name TEXT,
-    state TEXT,
-    postal_code TEXT,
-    campaign_id UUID,
-    campaign_budget DOUBLE,
-    pay_currency TEXT,
-    pay_from DOUBLE,
-    pay_to DOUBLE,
-    pay_type TEXT,
-    work_schedule TEXT,
-    benefits LIST<TEXT>,
-    bid DOUBLE,
-    company_logo BLOB,
-    feed_id UUID,
-    lat DOUBLE,
-    lon DOUBLE,
-    major_category TEXT,
-    minor_category TEXT,
-    pay_option TEXT,
-    requirements TEXT,
-    status TEXT
-);
-CREATE TABLE search (
-  job_id int,
-  benefits text,
-  campaign text,
-  campaign_city text,
-  company_name text,
-  company_description text,
-  feed_id int,
-  latitude double,
-  longitude double,
-  major_category text,
-  minor_category text,
-  pay_currency text,
-  pay_from int,
-  pay_to int,
-  pay_option text,
-  pay_type text,
-  postal_code text,
-  required_skills list<text>,
-  state text,
-  status text,
-  title text,
-  work_schedule text,
-  PRIMARY KEY (job_id)
-);
-
-select \* from search
-
 CREATE TABLE hhdatabase.tracking (
     create_time  text  PRIMARY KEY,
     bid          double,
