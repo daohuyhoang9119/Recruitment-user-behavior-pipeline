@@ -127,111 +127,108 @@ docker run -d --name my-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=1 mysql
 ---
 
 Docker start Cassandra
-docker run -d --name my-cassandra -p 9042:9042 -e CASSANDRA_CLUSTER_NAME=gotoro -e CASSANDRA_USER=cassandra -e CASSANDRA_PASSWORD=cassandra cassandra
------ Code cassandra-----
-b1: cai jdbc cassandra cho dbeaver
-b2: vao terminal docker cho cassandra
 
-- describe keyspaces => chon keyspaces, vd: hhdatabase
-  b3: vao dbeaver
-- create a connection for cassandra =>
+```
+  docker run -d --name my-cassandra -p 9042:9042 -e CASSANDRA_CLUSTER_NAME=gotoro -e CASSANDRA_USER=cassandra -e CASSANDRA_PASSWORD=cassandra cassandra
+```
+
+----- Code cassandra-----
+
+- b1: cai jdbc cassandra cho dbeaver
+- b2: vao terminal docker cho cassandra
+  describe keyspaces => chon keyspaces, vd: hhdatabase
+- b3: vao dbeaver
+- b4: create a connection for cassandra =>
   jdbc url: jdbc:cassandra://localhost:9042/{ mykeyspace }?localdatacenter=datacenter1
   doi keyspace, o day la jdbc:cassandra://localhost:9042/hhdatabase?localdatacenter=datacenter1
 
-b3: create table
+- b3: create table
 
-```
 C:\Users\DELL\DataGripProjects\
 
-
-use hhdatabase;
-CREATE TABLE hhdatabase.tracking (
-    create_time  text  PRIMARY KEY,
-    bid          double,
-    bn           text,
-    campaign_id  double,
-    cd           double,
-    custom_track text,
-    de           text,
-    dl           text,
-    dt           text,
-    ed           text,
-    ev           double,
-    group_id     double,
-    id           text ,
-    job_id       double,
-    md           text,
-    publisher_id double,
-    rl           text,
-    sr           text,
-    ts           text,
-    tz           double,
-    ua           text,
-    uid          text,
-    utm_campaign text,
-    utm_content  text,
-    utm_medium   text,
-    utm_source   text,
-    utm_term     text,
-    v            double,
-    vp           text
-);
-
-
-drop table hhdatabase.tracking;
-
-select * from tracking limit 10;
-
-
-
-
+```
+  use hhdatabase;
+  CREATE TABLE hhdatabase.tracking (
+      create_time  text  PRIMARY KEY,
+      bid          double,
+      bn           text,
+      campaign_id  double,
+      cd           double,
+      custom_track text,
+      de           text,
+      dl           text,
+      dt           text,
+      ed           text,
+      ev           double,
+      group_id     double,
+      id           text ,
+      job_id       double,
+      md           text,
+      publisher_id double,
+      rl           text,
+      sr           text,
+      ts           text,
+      tz           double,
+      ua           text,
+      uid          text,
+      utm_campaign text,
+      utm_content  text,
+      utm_medium   text,
+      utm_source   text,
+      utm_term     text,
+      v            double,
+      vp           text
+  );
+  drop table hhdatabase.tracking;
+  select * from tracking limit 10;
 ```
 
-Docker file compose
+```
+    Docker file compose
 
-FROM apache/spark-py:v3.1.3
+    FROM apache/spark-py:v3.1.3
 
-USER root
-ENV PYSPARK_MAJOR_PYTHON_VERSION=3
-RUN apt-get update
-RUN apt install -y python3 python3-pip
-RUN pip3 install --upgrade pip setuptools --user
-RUN rm -r /root/.cache && rm -rf /var/cache/apt/\*
+    USER root
+    ENV PYSPARK_MAJOR_PYTHON_VERSION=3
+    RUN apt-get update
+    RUN apt install -y python3 python3-pip
+    RUN pip3 install --upgrade pip setuptools --user
+    RUN rm -r /root/.cache && rm -rf /var/cache/apt/\*
 
-WORKDIR /opt/application
-COPY requirements.txt .
-COPY pyspark_etl_auto.py /opt/application/pyspark_etl_auto.py
-COPY mysql-connector-java-8.0.30.jar /opt/spark/jars
-COPY entrypoint.sh /entrypoint.sh
+    WORKDIR /opt/application
+    COPY requirements.txt .
+    COPY pyspark_etl_auto.py /opt/application/pyspark_etl_auto.py
+    COPY mysql-connector-java-8.0.30.jar /opt/spark/jars
+    COPY entrypoint.sh /entrypoint.sh
 
-RUN pip3 install -r requirements.txt --user
+    RUN pip3 install -r requirements.txt --user
 
-ENTRYPOINT ["sh","/entrypoint.sh"]
+    ENTRYPOINT ["sh","/entrypoint.sh"]
+```
 
 #----------- SCRIPT Casssandra --------------------
-insert into tracking(create_time,job_id, publisher_id, campaign_id, group_id, custom_track , ts)
-values ('da65d9c0-38ec-11ef-8e24-47bd75e46ecc',1111,1111,1111,1111,'click', '2024-07-03 10:33:40.384')
+
+```
+  insert into tracking(create_time,job_id, publisher_id, campaign_id, group_id, custom_track , ts)
+  values ('da65d9c0-38ec-11ef-8e24-47bd75e46ecc',1111,1111,1111,1111,'click', '2024-07-03 10:33:40.384')
+
+  select now() from tracking;
+```
 
 2024-07-03 10:33:40.384
 
-select now() from tracking;
-
 #----------- SCRIPT MySQL--------------
-create database hhdatabase;
 
-use hhdatabase;
-
-select \* from job;
-
-select \* from events limit 20;
-
-truncate table events;
-
-drop table events;
-
-select max(events.last_updated_at) from events
-
-insert into tracking
+```
+    create database hhdatabase;
+    use hhdatabase;
+    select \* from job;
+    select \* from events limit 20;
+    truncate table events;
+    drop table events;
+    select max(events.last_updated_at) from events
+    insert into tracking
+```
 
 #----------- Kafka setup--------------
 
