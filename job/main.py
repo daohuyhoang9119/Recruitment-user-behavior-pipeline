@@ -7,7 +7,7 @@ import pandas as pd
 import findspark
 findspark.init()
 import pyspark
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.window import Window
 from pyspark.sql.types import *
 import pyspark.sql.functions as f
@@ -17,6 +17,8 @@ from pyspark.sql.functions import when
 from pyspark.sql.functions import col
 from pyspark.sql.types import *
 from pyspark.sql.functions import lit
+import json
+from kafka import KafkaProducer,KafkaConsumer
 
 spark = SparkSession.builder \
     .config('spark.jars.packages', 'com.datastax.spark:spark-cassandra-connector_2.12:3.1.0') \
@@ -151,6 +153,7 @@ def process_final_data(clicks_output,conversion_output,qualified_output,unqualif
                                 join(unqualified_output,['job_id','date','hour','publisher_id','campaign_id','group_id'],'full')
     return final_data 
     
+
 def process_cassandra_data(df):
     clicks_output = calculating_clicks(df)
     conversion_output = calculating_conversion(df)
@@ -160,7 +163,7 @@ def process_cassandra_data(df):
     return final_data
 
 
-
+#--------Handle with database-------------    
 def write_data_mysql(df):
     port_number = os.getenv("MYSQL_PORTNUMBER")
     db_name = os.getenv("MYSQL_DBNAME")
@@ -192,6 +195,65 @@ def write_data_mysql(df):
 
 
 
+#--------Kafka-------------    
+#--------Producer Kafka-------------    
+def produce_to_kafka(df: DataFrame):
+    kafka_topic = os.getenv("KAFKA_TOPIC")
+    kafka_bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+
+    producer = KafkaProducer(
+        bootstrap_servers=[kafka_bootstrap_servers],
+        value_serializer=lambda x: json.dumps(x).encode('utf-8')
+    )
+    # Convert DataFrame to JSON and send each row to Kafka
+    for row in df.toJSON().collect():
+        producer.send(kafka_topic, value=json.loads(row))
+    producer.flush()
+    producer.close()
+
+    print('Data sent to Kafka successfully')
+
+#--------Consumer Kafka-------------    
+def consume_from_kafka():
+    # Load environment variables
+    kafka_topic = os.getenv("KAFKA_TOPIC")
+    kafka_bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+    
+    consumer = KafkaConsumer(
+        kafka_topic,
+        bootstrap_servers=[kafka_bootstrap_servers],
+        auto_offset_reset='earliest',
+        enable_auto_commit=True,
+        group_id='myGroup',
+        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+    )
+
+    # Initialize Spark session
+    spark = SparkSession.builder \
+        .appName("KafkaToMySQL") \
+        .getOrCreate()
+
+    for message in consumer:
+        data = message.value
+        # Convert JSON to DataFrame
+        rdd = spark.sparkContext.parallelize([data])
+        df = spark.read.json(rdd)
+
+        # Ensure the DataFrame has the correct columns
+        required_columns = ["job_id", "date", "hour", "publisher_id", "campaign_id", "group_id",
+                            "qualified_application", "disqualified_application", "conversion", 
+                            "clicks", "bid_set", "spend_hour", "sources", "last_updated_at"]
+        for col_name in required_columns:
+            if col_name not in df.columns:
+                df = df.withColumn(col_name, lit(None))
+
+        print("------Import result to MySQL--------")
+        write_data_mysql(df)
+        print("Data imported successfully")
+    spark.stop()
+
+
+
 def main(mysql_time):
     df = read_data_cassandra(mysql_time)
     print("------Read data & show--------")
@@ -215,8 +277,12 @@ def main(mysql_time):
     final_output = df.join(company_df,'job_id','left').drop(company_df.group_id).drop(company_df.campaign_id)
     final_output = final_output.withColumn('last_updated_at',f.lit(last_updated_time))
 
-    print("------Import result to MySQL--------")
-    write_data_mysql(final_output)
+    print("------Send result to Kafka--------")
+    produce_to_kafka(final_output)
+
+
+    # print("------Import result to MySQL--------")
+    # write_data_mysql(final_output)
     
     print("------Done Job--------")
     spark.stop()

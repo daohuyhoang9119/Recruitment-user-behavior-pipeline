@@ -207,3 +207,50 @@ COPY entrypoint.sh /entrypoint.sh
 RUN pip3 install -r requirements.txt --user
 
 ENTRYPOINT ["sh","/entrypoint.sh"]
+
+#----------- SCRIPT Casssandra --------------------
+insert into tracking(create_time,job_id, publisher_id, campaign_id, group_id, custom_track , ts)
+values ('da65d9c0-38ec-11ef-8e24-47bd75e46ecc',1111,1111,1111,1111,'click', '2024-07-03 10:33:40.384')
+
+2024-07-03 10:33:40.384
+
+select now() from tracking;
+
+#----------- SCRIPT MySQL--------------
+create database hhdatabase;
+
+use hhdatabase;
+
+select \* from job;
+
+select \* from events limit 20;
+
+truncate table events;
+
+drop table events;
+
+select max(events.last_updated_at) from events
+
+insert into tracking
+
+#----------- Kafka setup--------------
+
+1. insstall:
+   Giải nén => vào config sửa 2 file:
+   server.properties + zookeeper.properties
+   sửa đường dẫn tới ổ đĩa chứa kafka
+2. Command script
+   run zookeeper : .\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
+
+```
+    run server: .\bin\windows\kafka-server-start.bat .\config\server.properties
+
+    run producer: .\bin\windows\kafka-topics.bat --create --topic myFirstTopic --bootstrap-server localhost:9092
+
+                  .\bin\windows\kafka-console-producer.bat --topic myFirstTopic --bootstrap-server localhost:9092
+
+    run consumer: .\bin\windows\kafka-console-consumer.bat --topic myFirstTopic --from-beginning --bootstrap-server localhost:9092
+
+    List topic:kafka-topics.sh --list --zookeeper zookeeper:2181
+
+```
