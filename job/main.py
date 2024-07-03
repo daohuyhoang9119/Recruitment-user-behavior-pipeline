@@ -1,5 +1,7 @@
 #Install libraries
+import datetime
 import os
+import time
 from dotenv import load_dotenv
 import pandas as pd
 import findspark
@@ -20,12 +22,12 @@ spark = SparkSession.builder \
     .config('spark.jars.packages', 'com.datastax.spark:spark-cassandra-connector_2.12:3.1.0') \
     .config("spark.driver.memory", "10g") \
     .getOrCreate()
+
 load_dotenv()
-input_path = os.getenv("INPUT_PATH")
-output_path = os.getenv("OUTPUT_PATH")
+
 
 #----------Handle with database-----------------
-def read_data_cassandra():
+def read_data_cassandra(mysql_time):
     # Adjust keyspace and table names as per your Cassandra setup
     keyspace_name = "hhdatabase"
     table_name = "tracking"
@@ -33,7 +35,7 @@ def read_data_cassandra():
     df = spark.read \
         .format("org.apache.spark.sql.cassandra") \
         .options(table=table_name, keyspace=keyspace_name) \
-        .load()
+        .load().where(col('ts')>= mysql_time)
     return df
 
 def read_company_from_mysql():
@@ -159,9 +161,6 @@ def process_cassandra_data(df):
 
 
 
-
-
-
 def write_data_mysql(df):
     port_number = os.getenv("MYSQL_PORTNUMBER")
     db_name = os.getenv("MYSQL_DBNAME")
@@ -193,34 +192,74 @@ def write_data_mysql(df):
 
 
 
-def main():
-    df = read_data_cassandra()
+def main(mysql_time):
+    df = read_data_cassandra(mysql_time)
     print("------Read data & show--------")
-    df.show(5,truncate=False)
+    # df.show(5,truncate=False)
+    last_updated_time = df.select(f.max('ts')).collect()[0][0]
 
     print("------Transform data--------")
     df = transform_data(df)
-    df.show(5,truncate=False)
+    # df.show(5,truncate=False)
 
     print("------Processing and calculating form Cassandra--------")
     df = process_cassandra_data(df)
-    df.show(5,truncate=False)
+    # df.show(5,truncate=False)
 
     print("------Processing company table from MySQL--------")
     company_df = read_company_from_mysql()
-    company_df.show(5,truncate=False)
+    # company_df.show(5,truncate=False)
 
 
     print("------Join together--------")
     final_output = df.join(company_df,'job_id','left').drop(company_df.group_id).drop(company_df.campaign_id)
-    final_output.show(5,truncate=False)
-    
+    final_output = final_output.withColumn('last_updated_at',f.lit(last_updated_time))
+
     print("------Import result to MySQL--------")
     write_data_mysql(final_output)
     
     print("------Done Job--------")
     spark.stop()
 
+# if __name__ == "__main__":
+#     main()
 
-if __name__ == "__main__":
-    main()
+def get_latest_time_cassandra():
+    data = spark.read.format("org.apache.spark.sql.cassandra").options(table = 'tracking',keyspace = 'hhdatabase').load()
+    cassandra_latest_time = data.agg({'ts':'max'}).take(1)[0][0]
+    return cassandra_latest_time
+
+def get_latest_time_mysql(url,driver,user,password):    
+    sql = """(select max(last_updated_at) from events) data"""
+    mysql_time = spark.read.format('jdbc').options(url=url, driver=driver, dbtable=sql, user=user, password=password).load()
+    mysql_time = mysql_time.take(1)[0][0]
+    if mysql_time is None:
+        # mysql_latest = '2023-01-14 21:56:05'
+        mysql_latest = '2023-01-14 22:56:05'
+    else :
+        mysql_latest = mysql_time.strftime('%Y-%m-%d %H:%M:%S')
+    return mysql_latest 
+
+db_name = os.getenv("MYSQL_DBNAME")
+user = os.getenv("MYSQL_USERNAME")
+password = os.getenv("MYSQL_PASSWORD")
+url = os.getenv("MYSQL_DRIVER")
+driver = "com.mysql.cj.jdbc.Driver"
+
+
+#run the while loop to compare data old and new
+while True :
+    start_time = datetime.datetime.now()
+    cassandra_time = get_latest_time_cassandra()
+    print('Cassandra latest time is {}'.format(cassandra_time))
+    mysql_time = get_latest_time_mysql(url,driver,user,password)
+    print('MySQL latest time is {}'.format(mysql_time))
+    if cassandra_time > mysql_time : 
+        main(mysql_time)
+    else :
+        print("No new data found")
+    end_time = datetime.datetime.now()
+    execution_time = (end_time - start_time).total_seconds()
+    print('Job takes {} seconds to execute'.format(execution_time))
+    time.sleep(10)
+    

@@ -62,6 +62,8 @@ MySQL
 Output
 
 ```bash
+Events table
+
 |-- user_id: string (nullable = true)
 |-- most_search_t6: string (nullable = true)
 |-- most_search_t7: string (nullable = true)
